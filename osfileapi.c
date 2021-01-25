@@ -1,35 +1,75 @@
-/****************************************************************************
-*
-*   Copyright (c) 2017 Windhover Labs, L.L.C. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions
-* are met:
-*
-* 1. Redistributions of source code must retain the above copyright
-*    notice, this list of conditions and the following disclaimer.
-* 2. Redistributions in binary form must reproduce the above copyright
-*    notice, this list of conditions and the following disclaimer in
-*    the documentation and/or other materials provided with the
-*    distribution.
-* 3. Neither the name Windhover Labs nor the names of its 
-*    contributors may be used to endorse or promote products derived 
-*    from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-* "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-* LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-* FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-* COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-* INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-* BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
-* OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-* AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-* ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-* POSSIBILITY OF SUCH DAMAGE.
-*
-*****************************************************************************/
+/*
+** File   : osfileapi.c
+**
+**      Copyright (c) 2004-2006, United States government as represented by the 
+**      administrator of the National Aeronautics Space Administration.  
+**      All rights reserved. This software was created at NASAs Goddard 
+**      Space Flight Center pursuant to government contracts.
+**
+**      This is governed by the NASA Open Source Agreement and may be used, 
+**      distributed and modified only pursuant to the terms of that agreement.
+**
+** Author : Nicholas Yanchik
+**
+** Purpose: This file Contains all of the api calls for manipulating
+**          files in a file system for posix 
+**
+** $Date: 2014/04/23 15:13:50GMT-05:00 $
+** $Revision: 1.15 $
+** $Log: osfileapi.c  $
+** Revision 1.15 2014/04/23 15:13:50GMT-05:00 acudmore 
+** Fixed use of O_CREAT flag in OS_open. Dont use it when opening a file as read only.
+** Revision 1.14 2014/01/16 16:26:08GMT-05:00 acudmore 
+** Implemented safer mutex lock/unlock
+** Revision 1.13 2013/07/29 12:03:18GMT-05:00 acudmore 
+** Updated OS_open to create a file if it does not exist
+** Update OS_ShellOutputToFile to check pointer and return OS_FS_SUCCESS
+** Revision 1.12 2013/04/11 15:25:40GMT-05:00 acudmore 
+** Add open file checks to OS_mv, OS_remove, and OS_cp
+** Revision 1.11 2012/12/19 13:38:58GMT-05:00 acudmore 
+** updated access flags for OS_open and OS_creat
+** Revision 1.10 2012/12/11 13:26:19EST acudmore 
+** Added NULL Pointer check to OS_FDGetInfo
+** Revision 1.9 2012/11/28 16:56:16EST acudmore 
+** Remove OS X and Cygwin Support
+** Revision 1.8 2012/11/15 14:17:50EST acudmore 
+** Removed second call to close. Added loop to check for interrupted system call around close in OS_close
+** Revision 1.7 2011/12/05 12:36:02EST acudmore 
+** added OS_rewinddir
+** Revision 1.6 2011/06/27 15:50:18EDT acudmore 
+** Went over APIs and Documentation for return code consistency.
+** Updated documentation, function comments, and return codes as needed.
+** Revision 1.5 2011/05/03 14:31:40EDT acudmore 
+** Fixed OS_stat to not complain on a long directory name ( longer than OS_MAX_FILE_NAME)
+** Revision 1.4 2010/11/15 11:06:28EST acudmore 
+** Added OS_FIleOpenCheck function
+** Revision 1.3 2010/11/12 12:41:37EST acudmore 
+** updated error codes in comments.
+** Revision 1.2 2010/11/12 12:00:43EST acudmore 
+** replaced copyright character with (c) and added open source notice where needed.
+** Revision 1.1 2010/02/17 13:12:02EST acudmore 
+** Initial revision
+** Member added to project c:/MKSDATA/MKS-REPOSITORY/MKS-OSAL-REPOSITORY/src/os/posix/project.pj
+** Revision 1.5 2009/07/16 13:01:43EDT acudmore 
+** Fixed warnings found by ARC.
+** Revision 1.4 2009/07/14 14:26:33EDT acudmore 
+** Fixed virtual vs. physical filename errors.
+** Created a new config parameter and created OS_TranslatePath.
+** OS_TranslatePath will replace OS_NameChange, but OS_NameChange is still included for now.
+** Revision 1.3 2009/07/10 14:58:54EDT acudmore 
+** Added code to clean up OSAL resources regardless of OS_close error
+** Revision 1.2 2009/03/10 10:53:49EDT nyanchik 
+** I made the changes to the comments of _OS_check_name_length foir all four OS's
+** Revision 1.1 2008/04/21 03:36:04BST ruperera 
+** Initial revision
+** Member added to project c:/MKSDATA/MKS-REPOSITORY/MKS-OSAL-REPOSITORY/src/os/linux/project.pj
+** Revision 1.3 2008/03/28 10:56:05EDT njyanchik 
+** I added the code shownin the DCR to OS_rename and OS_mv for all OS's
+** Revision 1.2 2008/01/22 15:16:49AST njyanchik 
+** I fixed the #define that is being used in the two functions listed in the DCR with the correct ones
+** Revision 1.1 2007/10/16 16:14:54EDT apcudmore 
+** Initial revision
+*/
 
 /****************************************************************************************
                                     INCLUDE FILES
@@ -46,11 +86,11 @@
 #include "errno.h"
 #include "pthread.h"
 
-#include "dirent.h"
 #include "sys/stat.h"
 
 #include "common_types.h"
 #include "osapi.h"
+#include <dirent.h>
 
 /****************************************************************************************
                                      DEFINES
@@ -74,7 +114,9 @@ extern void   OS_InterruptSafeUnlock(pthread_mutex_t *lock, sigset_t *previous);
 ****************************************************************************************/
 
 OS_FDTableEntry OS_FDTable[OS_MAX_NUM_OPEN_FILES];
+os_dir_t        OS_DDTable[OS_MAX_NUM_OPEN_FILES];
 pthread_mutex_t OS_FDTableMutex;
+pthread_mutex_t OS_DDTableMutex;
 /****************************************************************************************
                                 INITIALIZATION FUNCTION
 ****************************************************************************************/
@@ -90,18 +132,24 @@ int32 OS_FS_Init(void)
         strcpy(OS_FDTable[i].Path, "\0");
         OS_FDTable[i].User =       0;
         OS_FDTable[i].IsValid =    FALSE;
+
+        OS_DDTable[i].OSfd =       -1;
+        OS_DDTable[i].IsValid =    FALSE;
     }
     
     ret = pthread_mutex_init((pthread_mutex_t *) & OS_FDTableMutex,NULL); 
-
     if ( ret < 0 )
     {
         return(OS_ERROR);
     }
-    else
+
+    ret = pthread_mutex_init((pthread_mutex_t *) & OS_DDTableMutex,NULL);
+    if ( ret < 0 )
     {
-        return(OS_SUCCESS);
+        return(OS_ERROR);
     }
+
+    return(OS_SUCCESS);
 
 }
 /****************************************************************************************
@@ -208,9 +256,13 @@ int32 OS_creat  (const char *path, int32  access)
      * task can take that ID */
     OS_FDTable[PossibleFD].IsValid =    TRUE;
 
+    OS_InterruptSafeUnlock(&OS_FDTableMutex, &previous);
+
     mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
    
     status =  open(local_path, perm | O_CREAT | O_TRUNC, mode);
+
+    OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
 
     if (status != ERROR)
     {
@@ -326,8 +378,12 @@ int32 OS_open   (const char *path,  int32 access,  uint32  mode)
      * task can take that ID */
     OS_FDTable[PossibleFD].IsValid = TRUE;
 
+    OS_InterruptSafeUnlock(&OS_FDTableMutex, &previous);
+
     /* open the file  */
     status =  open(local_path, perm, mode);
+
+    OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
 
     if (status != ERROR)
     {
@@ -373,7 +429,7 @@ int32 OS_close (int32  filedes)
     }
     else
     {    
-	OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
+        OS_InterruptSafeLock(&OS_FDTableMutex, &mask, &previous);
 
         /*
         ** call close, and check for an interrupted system call 
@@ -1034,9 +1090,10 @@ int32 OS_mkdir (const char *path, uint32 access)
 
 os_dirp_t OS_opendir (const char *path)
 {
-
-    os_dirp_t dirdescptr;
-    char local_path[OS_MAX_LOCAL_PATH_LEN];
+    uint32   PossibleDD;
+    char     local_path[OS_MAX_LOCAL_PATH_LEN];
+    sigset_t previous;
+    sigset_t mask;
 
     /*
     ** Check to see if the path pointer is NULL
@@ -1061,18 +1118,37 @@ os_dirp_t OS_opendir (const char *path)
     {
         return NULL;
     }
-   
-    dirdescptr = opendir( (char*) local_path);
-    
-    if (dirdescptr == NULL)
+
+    OS_InterruptSafeLock(&OS_DDTableMutex, &mask, &previous);
+
+    for ( PossibleDD = 0; PossibleDD < OS_MAX_NUM_OPEN_FILES; PossibleDD++)
     {
+        if( OS_DDTable[PossibleDD].IsValid == FALSE)
+        {
+            break;
+        }
+    }
+
+    if (PossibleDD >= OS_MAX_NUM_OPEN_FILES)
+    {
+        OS_InterruptSafeUnlock(&OS_DDTableMutex, &previous);
+        return OS_FS_ERR_NO_FREE_FDS;
+    }
+   
+    OS_DDTable[PossibleDD].OSfd = opendir( (char*) local_path);
+    if (OS_DDTable[PossibleDD].OSfd == NULL)
+    {
+        OS_InterruptSafeUnlock(&OS_DDTableMutex, &previous);
         return NULL;
     }
-    else
-    {
-        return dirdescptr;
-    }
+
+    /* Mark the table entry as valid so no other
+     * task can take that ID */
+    OS_DDTable[PossibleDD].IsValid = TRUE;
+
+    OS_InterruptSafeUnlock(&OS_DDTableMutex, &previous);
     
+    return &OS_DDTable[PossibleDD];
 } /* end OS_opendir */
 
 /*--------------------------------------------------------------------------------------
@@ -1093,10 +1169,10 @@ int32 OS_closedir (os_dirp_t directory)
         return OS_FS_ERR_INVALID_POINTER;
     }
 
-    status = closedir(directory);
+    status = closedir(directory->OSfd);
     if (status != ERROR)
     {
-	directory = NULL;
+    	directory->IsValid = FALSE;
         return OS_FS_SUCCESS;
     }
     else
@@ -1115,22 +1191,21 @@ int32 OS_closedir (os_dirp_t directory)
 ---------------------------------------------------------------------------------------*/
 os_dirent_t *  OS_readdir (os_dirp_t directory)
 { 
-    os_dirent_t *tempptr;
+    struct dirent *entry;
 
     if (directory == NULL)
         return NULL;
 
-    tempptr = readdir( directory);
+    entry = readdir(directory->OSfd);
     
-    if (tempptr != NULL)
+    if (entry != NULL)
     {
-        return tempptr;
+        strcpy(directory->DirEnt.d_name, entry->d_name);
+        directory->DirEnt.d_type = entry->d_type;
+        return &directory->DirEnt;
     }
-    else
-    {
-        return NULL;
-    }
-        
+
+    return NULL;
 } /* end OS_readdir */
 
 /*--------------------------------------------------------------------------------------
@@ -1144,7 +1219,7 @@ void  OS_rewinddir (os_dirp_t directory )
 {
     if (directory != NULL)
     {
-       rewinddir( directory);
+       rewinddir( directory->OSfd);
     }
 }
 /*--------------------------------------------------------------------------------------

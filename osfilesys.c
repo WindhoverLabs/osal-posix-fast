@@ -1,35 +1,85 @@
-/****************************************************************************
-*
-*   Copyright (c) 2017 Windhover Labs, L.L.C. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions
-* are met:
-*
-* 1. Redistributions of source code must retain the above copyright
-*    notice, this list of conditions and the following disclaimer.
-* 2. Redistributions in binary form must reproduce the above copyright
-*    notice, this list of conditions and the following disclaimer in
-*    the documentation and/or other materials provided with the
-*    distribution.
-* 3. Neither the name Windhover Labs nor the names of its 
-*    contributors may be used to endorse or promote products derived 
-*    from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-* "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-* LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-* FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-* COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-* INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-* BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
-* OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-* AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-* ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-* POSSIBILITY OF SUCH DAMAGE.
-*
-*****************************************************************************/
+/*
+** File   : osfilesys.c
+**
+**      Copyright (c) 2004-2006, United States government as represented by the 
+**      administrator of the National Aeronautics Space Administration.  
+**      All rights reserved. This software was created at NASAs Goddard 
+**      Space Flight Center pursuant to government contracts.
+**
+**      This is governed by the NASA Open Source Agreement and may be used, 
+**      distributed and modified only pursuant to the terms of that agreement.
+**
+** Author : Nicholas Yanchik / NASA GSFC Code 582.0
+**
+** Purpose: This file has the api's for all of the making
+**          and mounting type of calls for file systems
+**
+** $Date: 2013/12/16 12:59:48GMT-05:00 $
+** $Revision: 1.14 $
+** $Log: osfilesys.c  $
+** Revision 1.14 2013/12/16 12:59:48GMT-05:00 acudmore 
+** Use macros for volume name length and physical device name length.
+** Remove use of TranslatePath call in GetPhysDriveName call
+** Revision 1.13 2013/07/29 12:08:50GMT-05:00 acudmore 
+** Updated paramter checks in all functions
+**   removed hardcoded numbers
+** Revision 1.12 2013/07/25 14:32:58GMT-05:00 acudmore 
+** Added OS_GetFsInfo
+** Revision 1.11 2013/07/22 15:53:59GMT-05:00 acudmore 
+** conditionally compile debug printfs
+** Revision 1.10 2012/12/11 14:04:35GMT-05:00 acudmore 
+** updated return codes for consistency
+** Revision 1.9 2012/11/28 16:56:16EST acudmore 
+** Remove OS X and Cygwin Support
+** Revision 1.8 2011/06/27 15:50:19EDT acudmore 
+** Went over APIs and Documentation for return code consistency.
+** Updated documentation, function comments, and return codes as needed.
+** Revision 1.7 2011/05/24 14:11:58EDT acudmore 
+** Removed code that makes directories on Linux for file system path mapping.
+** File system mapping will now just map to existing directories. These directories should be 
+** created before starting the OSAL based application. 
+** For example: on OSAL "/cf" might map to "/media/cf0"
+** Revision 1.6 2011/05/16 16:04:46EDT acudmore 
+** Do not append device to directory name in OS_TranslatePath. 
+** This is so the mapping is easier to setup on posix
+** Revision 1.5 2010/11/12 12:41:37EST acudmore 
+** updated error codes in comments.
+** Revision 1.4 2010/11/12 12:00:44EST acudmore 
+** replaced copyright character with (c) and added open source notice where needed.
+** Revision 1.3 2010/02/23 11:05:00EST acudmore 
+** Updated fsBlocksFree and fsBytesFree to use statvfs
+** Revision 1.2 2010/02/22 15:50:03EST acudmore 
+** Added OS_fsBytesFree to posix port
+** Revision 1.1 2010/02/17 13:12:03EST acudmore 
+** Initial revision
+** Member added to project c:/MKSDATA/MKS-REPOSITORY/MKS-OSAL-REPOSITORY/src/os/posix/project.pj
+** Revision 1.4 2009/08/03 14:14:29EDT acudmore 
+** Turned off debug printfs
+** Revision 1.3 2009/07/16 13:01:46EDT acudmore 
+** Fixed warnings found by ARC.
+** Revision 1.2 2009/07/14 14:26:35EDT acudmore 
+** Fixed virtual vs. physical filename errors.
+** Created a new config parameter and created OS_TranslatePath.
+** OS_TranslatePath will replace OS_NameChange, but OS_NameChange is still included for now.
+** Revision 1.1 2008/04/20 22:36:04EDT ruperera 
+** Initial revision
+** Member added to project c:/MKSDATA/MKS-REPOSITORY/MKS-OSAL-REPOSITORY/src/os/linux/project.pj
+** Revision 1.1 2007/10/16 16:14:54EDT apcudmore 
+** Initial revision
+** Member added to project d:/mksdata/MKS-OSAL-REPOSITORY/src/os/linux/project.pj
+** Revision 1.11 2007/05/25 09:17:55EDT njyanchik 
+** I added the rmfs call to the OSAL and updated the unit test stubs to match
+** Revision 1.10 2007/04/24 11:36:38EDT njyanchik 
+** I Implemented the followiing fixes:
+** Items 1,2,3 are for vxworks 5.5 , so we don't have to change that at all
+** Item 4: fixed by adding a check for the length of the volume name (volname) on entry to the function
+** Items 5,6, fixed by making the final strcpy a strncpy in OS_NameChange to make sure the string returned is less than or equal to the maximum number of bytes.
+** Item 7: fixed by making the first strcpy in OS_NameChange a strncpy to prevent the input from being too long. This way the string length of LocalName won't be too long to use in line 704.
+** Item 9: Fixed by making the error number parameter an int32 instead of a uint32
+** Revision 1.9 2007/02/27 15:22:02EST njyanchik 
+** This CP has the initial import of the new file descripor table mechanism
+
+*/
 
 /****************************************************************************************
                                     INCLUDE FILES
@@ -43,7 +93,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-#include <dirent.h>
 #include <sys/statvfs.h>
 
 #include "common_types.h"
@@ -423,6 +472,10 @@ int32 OS_fsBytesFree (const char *name, uint64 *bytes_free)
    ** Translate the path
    */
    NameStatus = OS_TranslatePath(name, tmpFileName);
+   if (NameStatus != OS_FS_SUCCESS)
+   {
+      return OS_FS_ERROR;
+   }
 
    status = statvfs(tmpFileName, &stat_buf);
    if ( status == 0 )
@@ -648,6 +701,15 @@ int32 OS_TranslatePath(const char *VirtualPath, char *LocalPath)
 --------------------------------------------------------------------------------------- */
 int32 OS_FS_GetErrorName(int32 error_num, os_fs_err_name_t * err_name)
 {
+    /*
+     * Implementation note for developers:
+     *
+     * The size of the string literals below (including the terminating null)
+     * must fit into os_fs_err_name_t.  Always check the string length when
+     * adding or modifying strings in this function.  If changing
+     * os_fs_err_name_t then confirm these strings will fit.
+     */
+
     os_fs_err_name_t local_name;
     int32 return_code;
 

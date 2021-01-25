@@ -1,35 +1,101 @@
-/****************************************************************************
-*
-*   Copyright (c) 2017 Windhover Labs, L.L.C. All rights reserved.
-*
-* Redistribution and use in source and binary forms, with or without
-* modification, are permitted provided that the following conditions
-* are met:
-*
-* 1. Redistributions of source code must retain the above copyright
-*    notice, this list of conditions and the following disclaimer.
-* 2. Redistributions in binary form must reproduce the above copyright
-*    notice, this list of conditions and the following disclaimer in
-*    the documentation and/or other materials provided with the
-*    distribution.
-* 3. Neither the name Windhover Labs nor the names of its 
-*    contributors may be used to endorse or promote products derived 
-*    from this software without specific prior written permission.
-*
-* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-* "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-* LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-* FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-* COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-* INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-* BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
-* OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
-* AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-* ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-* POSSIBILITY OF SUCH DAMAGE.
-*
-*****************************************************************************/
+/*
+** File   : osapi.c
+**
+**      Copyright (c) 2004-2006, United States government as represented by the 
+**      administrator of the National Aeronautics Space Administration.  
+**      All rights reserved. This software was created at NASAs Goddard 
+**      Space Flight Center pursuant to government contracts.
+**
+**      This is governed by the NASA Open Source Agreement and may be used, 
+**      distributed and modified only pursuant to the terms of that agreement.
+**
+** Author : Alan Cudmore
+**
+** Purpose: 
+**         This file  contains some of the OS APIs abstraction layer 
+**         implementation for POSIX, specifically for Linux with the 2.6 kernel ( > 2.6.18 ) 
+**         with the gnu c library. uClibc or other embedded C libraries may not work. 
+**         
+**
+** $Date: 2014/04/23 13:11:08GMT-05:00 $
+** $Revision: 1.29 $
+** $Log: osapi.c  $
+** Revision 1.29 2014/04/23 13:11:08GMT-05:00 acudmore 
+** In the posix message queue version of OS_QueueCreate, fixed the problem where the queue size was hardcoded
+** Revision 1.28 2014/01/16 16:29:22GMT-05:00 acudmore 
+** Implemented safer mutex lock/unlock
+** switched time functions to clock_gettime/clock_settime
+** Revision 1.27 2013/12/11 16:46:07GMT-05:00 acudmore 
+** OS_QueueGet - check for buffer overflow condition in both versions of function
+** Revision 1.26 2013/12/11 13:21:36GMT-05:00 acudmore 
+** Updated OS_QueueGet code to allow a message to be smaller than the buffer
+** Revision 1.25 2013/08/09 14:42:03GMT-05:00 acudmore 
+** changed OS_TaskDelay to use nanosleep and handle interruptions
+** Revision 1.24 2013/07/25 14:27:20GMT-05:00 acudmore 
+** Fixed reference to bin_sem_table in CountSem function
+** Revision 1.23 2013/07/24 11:13:31GMT-05:00 acudmore 
+** Updated Milli2Ticks
+** Revision 1.22 2013/07/23 13:42:03GMT-05:00 acudmore 
+** The pthread attributes were not being set correctly.
+** In addition, the application must be run as root to set priority, stack size, and scheduling policy.
+** Revision 1.21 2013/07/22 15:54:47GMT-05:00 acudmore 
+** conditionally compile debug printfs
+** Revision 1.20 2012/12/19 14:39:56GMT-05:00 acudmore 
+** Updated use of size_copied in OS_QueueGet
+** Revision 1.19 2012/12/19 13:45:21EST acudmore 
+** Updated QueuePut return codes ( included OS_ERROR )
+**  Also, close socket before returning an error
+** Revision 1.18 2012/12/06 14:53:02EST acudmore 
+** Updated comments
+** Revision 1.17 2012/11/28 16:56:15EST acudmore 
+** Remove OS X and Cygwin Support
+** Revision 1.16 2012/11/15 14:17:08EST acudmore 
+** Moved task table init statements inside mutex lock in OS_TaskCreate
+** Revision 1.15 2012/11/09 17:11:30EST acudmore 
+** Overhaul of Binary, Counting sems
+** Fixed task creation priority setup
+** Revision 1.14 2012/10/03 11:35:04EDT acudmore 
+** Fixed semaphore define when initializing counting semaphore table in OS_API_Init
+** Revision 1.13 2012/04/11 10:57:07EDT acudmore 
+** Added OS_printf_enable and OS_printf_disable
+** Revision 1.12 2012/01/09 17:28:43EST acudmore 
+** Fixed a couple of OS X related compilation errors
+** Revision 1.11 2011/12/05 15:26:29EST acudmore 
+** Added semaphore protection for counting semaphore give and take operations
+** Revision 1.10 2011/06/27 15:50:18EDT acudmore 
+** Went over APIs and Documentation for return code consistency.
+** Updated documentation, function comments, and return codes as needed.
+** Revision 1.9 2011/04/05 12:53:49EDT acudmore 
+** Updated comments for timeout code. If a pend is interrupted by 
+** a system call, there is no need to recompute delay
+** Revision 1.8 2011/03/30 11:43:47EDT acudmore 
+** Updated all timeout code to:
+** - use the CompAbsDelayTime function
+** - Check to see if the delay was interrupted by a system call
+** - Not use a busy loop if the posix call is available ( linux )
+** Revision 1.7 2011/03/23 12:31:52EDT acudmore 
+** Updated pending calls to account for EINTR return code ( interrupted by signal )
+** Revision 1.6 2011/03/23 11:20:09EDT acudmore 
+** Added logic to posix message queue create and delete to make queue name unique for each process running the cfe
+** Revision 1.5 2010/11/12 12:00:43EST acudmore 
+** replaced copyright character with (c) and added open source notice where needed.
+** Revision 1.4 2010/11/10 15:33:47EST acudmore 
+** Fixed IntAttachHandler prototype
+** Revision 1.3 2010/03/10 15:43:03EST acudmore 
+** Updated to work with cygwin 1.7.x
+** Revision 1.2 2010/03/08 12:07:17EST acudmore 
+** fixed warnings by using a function pointer type
+** Revision 1.1 2010/02/17 13:12:01EST acudmore 
+** Initial revision
+** Member added to project c:/MKSDATA/MKS-REPOSITORY/MKS-OSAL-REPOSITORY/src/os/posix/project.pj
+** Member added to project c:/MKSDATA/MKS-REPOSITORY/MKS-OSAL-REPOSITORY/src/os/linux/project.pj
+** Revision 1.10 2008/02/14 10:12:24EST apcudmore 
+** initialized pthread_attr_t to fix problem with OS_TaskCreate in cygwin
+** Revision 1.9 2008/02/04 10:59:00EST apcudmore 
+** Changed OS_QueueGet timeout to use select rather than a sleep loop.
+** Revision 1.7 2008/01/31 10:37:05EST apcudmore 
+** Implement Task Delete hook API.
+*/
 
 /****************************************************************************************
                                     INCLUDE FILES
